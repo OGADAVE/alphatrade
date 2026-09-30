@@ -1,0 +1,76 @@
+@import "tailwindcss";
+
+:root {
+  /* Base surfaces — deep charcoal-navy, not pure black */
+  --bg: #0B0F14;
+  --bg-elevated: #10161D;
+  --surface: #151C25;
+  --surface-hover: #1B2330;
+  --border: #232C38;
+  --border-strong: #303B4A;
+
+  /* Text */
+  --text-primary: #E8EDF3;
+  --text-secondary: #8C97A6;
+  --text-tertiary: #5C6674;
+
+  /* Signal semantics — these carry meaning, not decoration */
+  --long: #2FBF71;
+  --long-dim: #1A6B40;
+  --long-bg: rgba(47, 191, 113, 0.10);
+  --short: #F0554A;
+  --short-dim: #8A2E28;
+  --short-bg: rgba(240, 85, 74, 0.10);
+  --pending: #D9A441;
+  --pending-bg: rgba(217, 164, 65, 0.10);
+
+  /* Single sparing accent — interactive elements only */
+  --accent: #4B8BF5;
+  --accent-dim: #2C4E8A;
+
+  /* Dual type system: a grotesk for UI text, a tabular monospace for
+     price/data figures — see the note in app/layout.tsx about swapping
+     in self-hosted Manrope / IBM Plex Mono files later. */
+  --font-ui: "Segoe UI", -apple-system, "Helvetica Neue", Arial, sans-serif;
+  --font-data: "SF Mono", "Cascadia Mono", "Consolas", "Liberation Mono", monospace;
+
+  --radius-sm: 4px;
+  --radius-md: 8px;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  background: var(--bg);
+}
+
+body {
+  background: var(--bg);
+  color: var(--text-primary);
+  font-family: var(--font-ui);
+  -webkit-font-smoothing: antialiased;
+}
+
+.font-data {
+  font-family: var(--font-data);
+  font-variant-numeric: tabular-nums;
+}
+
+::selection {
+  background: var(--accent-dim);
+  color: var(--text-primary);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}

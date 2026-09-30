@@ -1,0 +1,89 @@
+rules_version = '2';
+
+// Design principle: the browser gets the minimum. All signal reads go
+// through server code (Admin SDK, which bypasses these rules) so that
+// premium entitlement can be enforced in src/lib/entitlements.ts. If the
+// `signals` collection were client-readable, that enforcement would be
+// bypassable with the public Firebase web config alone.
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isAdmin() {
+      return isSignedIn() &&
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == "admin";
+    }
+
+    // Fields a user must never be able to change on their own profile.
+    // Uses affectedKeys() so it works whether or not a field exists yet
+    // (comparing resource.data.suspended directly errors when it's absent).
+    function touchesProtectedUserFields() {
+      return request.resource.data.diff(resource.data).affectedKeys()
+        .hasAny(["role", "tier", "suspended", "uid", "email", "createdAt", "agreedToTermsAt"]);
+    }
+
+    // NO client access to raw signals — premium redaction happens
+    // server-side. Server code (Admin SDK) is unaffected by this.
+    match /signals/{signalId} {
+      allow read, write: if false;
+    }
+
+    match /signal_sources/{sourceId} {
+      allow read, write: if isAdmin();
+    }
+
+    match /strategies/{strategyId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    match /signal_results/{resultId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    match /strategy_performance/{strategyId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    match /audit_logs/{logId} {
+      allow read, write: if isAdmin();
+    }
+
+    // subscriptions/{uid} is AlphaTrade's entitlement source of truth.
+    // Users may read their own; nobody writes from the client. Only the
+    // Paystack webhook (Admin SDK) does — a client write here would let a
+    // user grant themselves Premium.
+    match /subscriptions/{uid} {
+      allow read: if isSignedIn() && (request.auth.uid == uid || isAdmin());
+      allow write: if false;
+    }
+
+    match /users/{userId} {
+      allow read: if isSignedIn() && (request.auth.uid == userId || isAdmin());
+
+      // A new profile may only ever be a plain free "user" — otherwise
+      // anyone could create their own doc with role: "admin". Field list
+      // must match what src/app/register/page.tsx writes.
+      allow create: if isSignedIn() && request.auth.uid == userId &&
+        request.resource.data.keys().hasOnly([
+          "uid", "email", "role", "tier", "watchlist", "followedStrategyIds",
+          "favoriteSignalIds", "agreedToTermsAt", "createdAt"
+        ]) &&
+        request.resource.data.role == "user" &&
+        request.resource.data.tier == "free" &&
+        request.resource.data.uid == request.auth.uid &&
+        request.resource.data.email.lower() == request.auth.token.email.lower();
+
+      // Own doc only, and never the protected fields above. Watchlist,
+      // follows, and favorites are the intended writable fields.
+      allow update: if isSignedIn() && request.auth.uid == userId &&
+        !touchesProtectedUserFields();
+    }
+  }
+}
