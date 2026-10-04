@@ -49,8 +49,6 @@ export async function getStrategyPerformance(): Promise<StrategyPerformance[]> {
       adminDb().collection("strategy_performance").get(),
       adminDb().collection("signals").where("status", "in", OPEN_STATUSES).get(),
     ]);
-    if (perfSnap.empty) return mockPerformance;
-
     const activeByStrategy = new Map<string, number>();
     for (const doc of openSnap.docs) {
       const strategyId = doc.data().strategyId as string | undefined;
