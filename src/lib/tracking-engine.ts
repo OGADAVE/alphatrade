@@ -1,4 +1,5 @@
 import type { Signal, SignalStatus } from "./types";
+import { roundTo } from "./format";
 
 export interface TrackingUpdate {
   changed: boolean;
@@ -14,7 +15,7 @@ export interface TrackingUpdate {
 
 function pnlPercentAt(signal: Signal, price: number): number {
   const raw = ((price - signal.entry) / signal.entry) * 100;
-  return signal.direction === "LONG" ? raw : -raw;
+  return roundTo(signal.direction === "LONG" ? raw : -raw, 2);
 }
 
 const TERMINAL_STATUSES: SignalStatus[] = ["FULL_TP", "SL_HIT", "CANCELLED", "EXPIRED", "CLOSED"];

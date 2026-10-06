@@ -1,6 +1,7 @@
 import { getSignals, getStrategies } from "@/lib/signals-data";
 import StatusBadge from "@/components/StatusBadge";
 import { cancelSignal, closeSignal, modifyStopLoss, markInvalid } from "./actions";
+import { formatPrice } from "@/lib/format";
 
 export const dynamic = "force-dynamic";
 
@@ -51,9 +52,11 @@ export default async function SignalModerationPage() {
             </div>
 
             <div className="mt-2 flex gap-4 font-data text-xs" style={{ color: "var(--text-secondary)" }}>
-              <span>Entry {signal.entry}</span>
-              <span>SL {signal.stopLoss}</span>
-              <span>TP1 {signal.takeProfits[0]?.price}</span>
+              <span>Entry {formatPrice(signal.entry, signal.market, signal.symbol)}</span>
+              <span>SL {formatPrice(signal.stopLoss, signal.market, signal.symbol)}</span>
+              {signal.takeProfits[0] && (
+                <span>TP1 {formatPrice(signal.takeProfits[0].price, signal.market, signal.symbol)}</span>
+              )}
             </div>
 
             <div className="mt-3 flex flex-wrap items-center gap-2">

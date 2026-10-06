@@ -1,5 +1,6 @@
 import type { Strategy, StrategyPerformance } from "@/lib/types";
 import FollowButton from "./FollowButton";
+import { formatR } from "@/lib/format";
 
 function alphaScoreColor(score: number): string {
   if (score >= 70) return "var(--long)";
@@ -74,7 +75,7 @@ export default function Leaderboard({
                     className="font-data px-4 py-2.5"
                     style={{ color: perf.avgRMultiple >= 0 ? "var(--long)" : "var(--short)" }}
                   >
-                    {unranked ? "—" : `${perf.avgRMultiple >= 0 ? "+" : ""}${perf.avgRMultiple.toFixed(2)}R`}
+                    {unranked ? "—" : formatR(perf.avgRMultiple)}
                   </td>
                   <td className="px-4 py-2.5">
                     <FollowButton strategyId={perf.strategyId} />

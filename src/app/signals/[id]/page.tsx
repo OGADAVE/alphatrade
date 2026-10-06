@@ -4,6 +4,7 @@ import { getSignalById, getStrategyById } from "@/lib/signals-data";
 import { getServerUser } from "@/lib/get-server-user";
 import { getEntitlement, applyEntitlement } from "@/lib/entitlements";
 import StatusBadge from "@/components/StatusBadge";
+import { formatPrice, formatPercent } from "@/lib/format";
 
 export const dynamic = "force-dynamic";
 
@@ -69,12 +70,14 @@ export default async function SignalDetailPage({
       >
         <div>
           <p className="text-xs" style={{ color: "var(--text-tertiary)" }}>Entry</p>
-          <p className="font-data text-lg">{signal.restricted ? "🔒" : signal.entry}</p>
+          <p className="font-data text-lg">
+            {signal.restricted ? "🔒" : formatPrice(signal.entry, signal.market, signal.symbol)}
+          </p>
         </div>
         <div>
           <p className="text-xs" style={{ color: "var(--text-tertiary)" }}>Stop loss</p>
           <p className="font-data text-lg" style={{ color: "var(--short)" }}>
-            {signal.restricted ? "🔒" : signal.stopLoss}
+            {signal.restricted ? "🔒" : formatPrice(signal.stopLoss, signal.market, signal.symbol)}
           </p>
         </div>
         <div>
@@ -87,7 +90,7 @@ export default async function SignalDetailPage({
             className="font-data text-lg"
             style={{ color: (signal.pnlPercent ?? 0) >= 0 ? "var(--long)" : "var(--short)" }}
           >
-            {signal.pnlPercent != null ? `${signal.pnlPercent >= 0 ? "+" : ""}${signal.pnlPercent}%` : "—"}
+            {signal.pnlPercent != null ? formatPercent(signal.pnlPercent) : "—"}
           </p>
         </div>
       </div>
@@ -112,7 +115,7 @@ export default async function SignalDetailPage({
                 style={{ background: "var(--surface)", borderColor: "var(--border)" }}
               >
                 <span className="text-sm">TP{tp.level}</span>
-                <span className="font-data">{tp.price}</span>
+                <span className="font-data">{formatPrice(tp.price, signal.market, signal.symbol)}</span>
                 <span
                   className="text-xs"
                   style={{ color: tp.hitAt ? "var(--long)" : "var(--text-tertiary)" }}

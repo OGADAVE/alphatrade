@@ -3,6 +3,7 @@ import type { Signal } from "@/lib/types";
 import StatusBadge from "./StatusBadge";
 import FavoriteButton from "./FavoriteButton";
 import WatchToggle from "./WatchToggle";
+import { formatPrice, formatPercent } from "@/lib/format";
 
 function timeAgo(iso: string): string {
   const diffMs = Date.now() - new Date(iso).getTime();
@@ -62,15 +63,21 @@ export default function SignalCard({
       <div className="mt-4 grid grid-cols-3 gap-3 font-data text-sm">
         <div>
           <p className="text-xs" style={{ color: "var(--text-tertiary)" }}>Entry</p>
-          <p>{signal.restricted ? "🔒" : signal.entry}</p>
+          <p>{signal.restricted ? "🔒" : formatPrice(signal.entry, signal.market, signal.symbol)}</p>
         </div>
         <div>
           <p className="text-xs" style={{ color: "var(--text-tertiary)" }}>Stop loss</p>
-          <p style={{ color: "var(--short)" }}>{signal.restricted ? "🔒" : signal.stopLoss}</p>
+          <p style={{ color: "var(--short)" }}>
+            {signal.restricted ? "🔒" : formatPrice(signal.stopLoss, signal.market, signal.symbol)}
+          </p>
         </div>
         <div>
           <p className="text-xs" style={{ color: "var(--text-tertiary)" }}>Take profit</p>
-          <p style={{ color: "var(--long)" }}>{signal.restricted ? "🔒" : signal.takeProfits[0]?.price}</p>
+          <p style={{ color: "var(--long)" }}>
+            {signal.restricted || !signal.takeProfits[0]
+              ? "🔒"
+              : formatPrice(signal.takeProfits[0].price, signal.market, signal.symbol)}
+          </p>
         </div>
       </div>
 
@@ -85,8 +92,7 @@ export default function SignalCard({
           className="mt-3 font-data text-sm font-semibold"
           style={{ color: signal.pnlPercent >= 0 ? "var(--long)" : "var(--short)" }}
         >
-          {signal.pnlPercent >= 0 ? "+" : ""}
-          {signal.pnlPercent}%
+          {formatPercent(signal.pnlPercent)}
         </p>
       )}
     </Link>

@@ -1,5 +1,6 @@
 import type { Direction, Market, Signal, Timeframe } from "./types";
 import { computeRisk } from "./risk-engine";
+import { roundPrice } from "./format";
 
 // Loosely-typed input: this is what an external source (TradingView alert
 // JSON, a provider webhook, an admin form) is expected to send BEFORE it
@@ -47,11 +48,19 @@ export function normalizeSignal(
   const timeframe = (String(raw.timeframe ?? "15m").toLowerCase() as Timeframe) || "15m";
   const confidence = clamp(toNumber(raw.confidence) ?? 60, 1, 100);
 
+  // Round to market-appropriate precision here, once, so every downstream
+  // consumer — Firestore, the public API, the UI — gets clean numbers
+  // instead of propagating floating-point noise like 1.1163670399999999
+  // from upstream percentage math (e.g. entry * (1 - stopPct)).
+  const roundedEntry = entry != null ? roundPrice(entry, market, symbol) : 0;
+  const roundedStopLoss = stopLoss != null ? roundPrice(stopLoss, market, symbol) : 0;
+  const roundedTakeProfits = takeProfitPrices.map((p) => roundPrice(p, market, symbol));
+
   const { riskScore, riskLevel } = computeRisk({
     direction,
-    entry: entry ?? 0,
-    stopLoss: stopLoss ?? 0,
-    takeProfits: takeProfitPrices,
+    entry: roundedEntry,
+    stopLoss: roundedStopLoss,
+    takeProfits: roundedTakeProfits,
     confidence,
   });
 
@@ -62,9 +71,9 @@ export function normalizeSignal(
     symbol,
     market,
     direction,
-    entry: entry ?? 0,
-    stopLoss: stopLoss ?? 0,
-    takeProfits: takeProfitPrices.map((price, i) => ({
+    entry: roundedEntry,
+    stopLoss: roundedStopLoss,
+    takeProfits: roundedTakeProfits.map((price, i) => ({
       level: (i + 1) as 1 | 2 | 3,
       price,
       hitAt: null,
