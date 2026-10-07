@@ -29,7 +29,7 @@ const strategies = [
     market: "crypto",
     timeframes: ["15m", "1h"],
     instruments: ["BTC/USDT", "ETH/USDT", "SOL/USDT"],
-    engine: "Jesse",
+    engine: "Alpha Momentum Engine",
     riskLevel: "medium",
     active: true,
   },
@@ -40,7 +40,7 @@ const strategies = [
     market: "forex",
     timeframes: ["30m", "4h"],
     instruments: ["EUR/USD", "GBP/USD", "USD/JPY"],
-    engine: "Jesse",
+    engine: "FX Momentum Engine",
     riskLevel: "medium",
     active: true,
   },
@@ -71,6 +71,14 @@ const signalSources = [
     active: true,
     connectionDetails: "Runs in-process via /api/cron/generate-signals — requires TWELVE_DATA_API_KEY.",
   },
+  {
+    id: "admin_manual",
+    name: "Admin Manual Signals",
+    type: "admin",
+    authorized: true,
+    active: true,
+    connectionDetails: "Created through the protected Admin → Signals form.",
+  },
 ];
 
 async function seed() {
@@ -82,7 +90,7 @@ async function seed() {
     await db.collection("signal_sources").doc(id).set(data, { merge: true });
     console.log(`Seeded signal source: ${id}`);
   }
-  console.log("Done. Signals collection is left empty — ingest via the webhook routes or the admin panel.");
+  console.log("Done. Signals collection is left empty — ingest via the webhook routes, admin panel, or internal engines.");
 }
 
 seed().then(() => process.exit(0));
