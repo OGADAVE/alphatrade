@@ -20,7 +20,7 @@ export default async function HistoryPage() {
       </p>
       <div className="mt-6 grid gap-3 sm:grid-cols-2">
         {closed.map((s) => (
-          <SignalCard key={s.id} signal={s} strategyName={strategyName(s.strategyId)} />
+          <SignalCard key={s.id} signal={s} strategyName={strategyName(s.strategyId)} showMilestones/>
         ))}
       </div>
     </div>
