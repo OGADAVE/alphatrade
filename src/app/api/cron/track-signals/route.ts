@@ -1,9 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { adminDb, isAdminConfigured } from "@/lib/firebase-admin";
+import type { Query } from "firebase-admin/firestore";
 import { getCurrentPrices } from "@/lib/market-data";
 import { evaluateSignal } from "@/lib/tracking-engine";
 import { computeRMultiple } from "@/lib/alpha-score";
-import type { Signal, StrategyPerformanceAggregate } from "@/lib/types";
+import type { Market, Signal, StrategyPerformanceAggregate } from "@/lib/types";
 
 const OPEN_STATUSES = ["PENDING", "ACTIVE", "TP1_HIT", "TP2_HIT", "TP3_HIT"];
 
@@ -40,8 +41,12 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "Firebase Admin is not configured." }, { status: 503 });
   }
 
+  const marketFilter = request.nextUrl.searchParams.get("market") as Market | null;
+
   const db = adminDb();
-  const snap = await db.collection("signals").where("status", "in", OPEN_STATUSES).get();
+  let query: Query = db.collection("signals").where("status", "in", OPEN_STATUSES);
+  if (marketFilter) query = query.where("market", "==", marketFilter);
+  const snap = await query.get();
   const openSignals = snap.docs.map((d) => ({ id: d.id, ...d.data() }) as Signal);
 
   if (openSignals.length === 0) {

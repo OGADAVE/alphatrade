@@ -3,9 +3,16 @@ import type { Candle } from "./engines/types";
 import type { Market, Timeframe } from "./types";
 
 // Abstracted so the exchange/data provider can change without rewriting
-// the tracking engine (spec section 30). Add a new provider by adding a
-// branch in getCurrentPrice()/getCandles() and a fetch function beside the
-// ones here.
+// the tracking engine (spec section 30).
+//
+// Forex is split by FUNCTION, not by pair: Twelve Data supplies candles
+// for signal generation (all 10 pairs), Finnhub supplies live price for
+// TP/SL tracking (all 10 pairs). This keeps each provider doing the one
+// thing it's asked for consistently, and means neither provider's limits
+// depend on which specific pairs happen to be active — see "FX data
+// architecture" in README.md for the economics behind this split and why
+// generation specifically round-robins one symbol per invocation instead
+// of looping through all 10 in one request.
 
 /** "BTC/USDT" -> "BTCUSDT" */
 function toBinanceSymbol(symbol: string): string {
@@ -28,23 +35,27 @@ async function getCryptoPrice(symbol: string): Promise<number | null> {
   }
 }
 
+/** "EUR/USD" -> "OANDA:EUR_USD" — Finnhub's forex symbols are broker-prefixed. */
+function toFinnhubSymbol(symbol: string): string {
+  return `OANDA:${symbol.replace("/", "_").toUpperCase()}`;
+}
+
 async function getForexPrice(symbol: string): Promise<number | null> {
-  const apiKey = process.env.TWELVE_DATA_API_KEY;
+  const apiKey = process.env.FINNHUB_API_KEY;
   if (!apiKey) {
-    console.warn(`No TWELVE_DATA_API_KEY configured — skipping forex price for ${symbol}.`);
+    console.warn(`No FINNHUB_API_KEY configured — skipping forex price for ${symbol}.`);
     return null;
   }
   try {
     const res = await fetch(
-      `https://api.twelvedata.com/price?symbol=${encodeURIComponent(symbol)}&apikey=${apiKey}`,
+      `https://finnhub.io/api/v1/quote?symbol=${encodeURIComponent(toFinnhubSymbol(symbol))}&token=${apiKey}`,
       { cache: "no-store" },
     );
     if (!res.ok) return null;
-    const data = (await res.json()) as { price?: string };
-    const price = data.price ? Number(data.price) : null;
-    return price && Number.isFinite(price) ? price : null;
+    const data = (await res.json()) as { c?: number };
+    return typeof data.c === "number" && Number.isFinite(data.c) && data.c > 0 ? data.c : null;
   } catch (err) {
-    console.error(`Twelve Data price fetch failed for ${symbol}:`, err);
+    console.error(`Finnhub price fetch failed for ${symbol}:`, err);
     return null;
   }
 }

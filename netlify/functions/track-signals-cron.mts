@@ -1,11 +1,14 @@
 import type { Config } from "@netlify/functions";
 
-// This function's only job is to invoke the real tracking logic at
-// /api/cron/track-signals on a schedule. Netlify's scheduler attaches to
-// files in netlify/functions/, not directly to Next.js API routes, so this
-// small wrapper is what replaces vercel.json's cron block.
+// Covers both crypto (Binance, free/unlimited) and forex (Finnhub, ~60
+// req/min free tier, no stated daily cap) tracking in one run. Neither
+// provider needs the round-robin treatment generation requires — Finnhub
+// handles a full burst of up to 10 open-position price checks in a couple
+// of seconds, comfortably within both its own rate limit and Netlify's
+// 30s scheduled-function ceiling. Twelve Data is not used for tracking at
+// all (see "FX data architecture" in README.md) — only for FX candles.
 async function trackSignalsCron() {
-  const siteUrl = process.env.URL; // Netlify's own site URL, set at runtime
+  const siteUrl = process.env.URL;
   const secret = process.env.CRON_SECRET;
 
   if (!siteUrl || !secret) {

@@ -18,7 +18,15 @@ export const fxMomentumEngine: StrategyEngine = {
   name: "FX Momentum (EMA20/50 crossover)",
   strategyId: "strategy_fx_momentum",
   market: "forex",
-  instruments: ["EUR/USD", "GBP/USD", "USD/JPY"],
+  // Candles (generation) come from Twelve Data, round-robin — one pair
+  // every 3 minutes via netlify/functions/generate-signals-fx-cron.mts,
+  // which must stay in sync with this list. Live price (tracking) comes
+  // from Finnhub for all 10 pairs together — see "FX data architecture"
+  // in README.md.
+  instruments: [
+    "EUR/USD", "GBP/USD", "USD/JPY", "AUD/USD", "USD/CAD",
+    "USD/CHF", "NZD/USD", "EUR/GBP", "EUR/JPY", "GBP/JPY",
+  ],
   timeframe: "30m",
 
   async generateSignals(data: MarketData): Promise<CreateSignalInput[]> {

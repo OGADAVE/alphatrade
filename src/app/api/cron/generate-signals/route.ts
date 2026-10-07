@@ -3,7 +3,7 @@ import { adminDb, isAdminConfigured } from "@/lib/firebase-admin";
 import { getCandles } from "@/lib/market-data";
 import { normalizeSignal, validateNormalizedSignal, isDuplicateSignal } from "@/lib/signal-pipeline";
 import { strategyEngines } from "@/lib/engines/registry";
-import type { Signal } from "@/lib/types";
+import type { Market, Signal } from "@/lib/types";
 
 const OPEN_STATUSES = ["PENDING", "ACTIVE", "TP1_HIT", "TP2_HIT", "TP3_HIT"];
 
@@ -23,11 +23,15 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "Firebase Admin is not configured." }, { status: 503 });
   }
 
+  const marketFilter = request.nextUrl.searchParams.get("market") as Market | null;
+  const symbolFilter = request.nextUrl.searchParams.get("symbol");
+  const engines = marketFilter ? strategyEngines.filter((e) => e.market === marketFilter) : strategyEngines;
+
   const db = adminDb();
   let created = 0;
   const errors: string[] = [];
 
-  for (const engine of strategyEngines) {
+  for (const engine of engines) {
     // Open signals from THIS engine only — duplicate detection is scoped
     // per-source, same as the external webhooks.
     const openSnap = await db
@@ -37,7 +41,9 @@ export async function GET(request: NextRequest) {
       .get();
     const openSignals = openSnap.docs.map((d) => ({ id: d.id, ...d.data() }) as Signal);
 
-    for (const symbol of engine.instruments) {
+    const instruments = symbolFilter ? engine.instruments.filter((s) => s === symbolFilter) : engine.instruments;
+
+    for (const symbol of instruments) {
       try {
         const candles = await getCandles(symbol, engine.market, engine.timeframe, 150);
         if (candles.length === 0) {

@@ -82,24 +82,56 @@ provider webhooks use (`src/lib/signal-pipeline.ts`). An engine's output
 and an external provider's JSON payload are indistinguishable past that
 point.
 
-**Two engines are registered now**, both in `src/lib/engines/registry.ts`:
+**Two engines are registered now**, both in `src/lib/engines/registry.ts`,
+sharing the same EMA20/50-crossover-plus-RSI-filter logic and the same
+honest caveat: illustrative, not backtested — proves the adapter pattern
+end-to-end, not a proven edge.
 
 - `alpha-momentum-engine.ts` — crypto (BTC/USDT, ETH/USDT, SOL/USDT), 15m
   timeframe, feeds `strategy_alpha_momentum`. Needs no API key (Binance is
-  free/public).
-- `fx-momentum-engine.ts` — forex (EUR/USD, GBP/USD, USD/JPY), 30m
-  timeframe, feeds `strategy_fx_momentum`. **Needs `TWELVE_DATA_API_KEY`** —
-  without it, `getCandles()` returns an empty array and this engine
-  silently generates nothing (same dependency Phase 4's forex tracking
-  already has).
+  free/public). Generation and tracking both run every 15m/5m respectively
+  — no rate constraints, so no special scheduling needed.
+- `fx-momentum-engine.ts` — forex, 10 pairs, 30m timeframe, feeds
+  `strategy_fx_momentum`. Forex is rate-limited, so it has real
+  architecture behind it — see below.
 
-Both share the same EMA20/50-crossover-plus-RSI-filter logic and the same
-honest caveat: illustrative, not backtested — proves the adapter pattern
-end-to-end, not a proven edge. The cron currently runs every 5 minutes
-regardless of engine — harmless for the 30m forex engine (it just
-re-checks an unchanged candle a few extra times; duplicate detection blocks
-any repeat), but if you add engines with very different timeframes,
-consider giving each its own schedule instead of one shared one.
+### FX data architecture
+
+Forex is split **by function, not by pair** — one provider for candles
+(signal generation), a different one for live price (TP/SL tracking):
+
+| Function | Provider | Why |
+|---|---|---|
+| Candle generation (10 pairs) | Twelve Data | Free tier: 800 req/day, 8/min |
+| Price tracking (open positions) | Finnhub | Free tier: ~60 req/min, no stated daily cap |
+
+**Generation runs as a round-robin, not a loop.** The obvious design —
+one cron every 30 minutes, looping through all 10 pairs — doesn't
+actually work: Netlify scheduled functions are capped at **30 seconds**,
+and pacing 10 sequential Twelve Data calls far enough apart to stay under
+8 credits/minute would take ~80 seconds on its own. So
+`generate-signals-fx-cron.mts` instead runs every **3 minutes** and
+processes exactly **one** pair per invocation, cycling through all 10
+across each 30-minute window (verified: every pair hit exactly once per
+block, see the commit history for the test). Same daily total either way
+(480 Twelve Data credits/day) — just spread out instead of bursted, which
+is what actually respects the per-minute cap.
+
+**Tracking doesn't need this.** It runs as a single unified cron
+(`track-signals-cron.mts`, every 5 minutes) covering crypto *and* forex
+together, because Finnhub's limits comfortably absorb a burst of up to 10
+price checks in a couple of seconds. Twelve Data is never touched for
+tracking — only for candles. The unique-symbol dedup (one price request
+per distinct open pair, not one per open signal) was already in place
+before this change.
+
+**Economics at full load** (10 forex pairs, assuming every one has an open
+position simultaneously — the actual worst case): ~480 Twelve Data
+credits/day for generation, comfortably under 800, with the per-minute
+cap structurally impossible to exceed (never more than 1 credit per
+invocation). Finnhub absorbs up to ~2,880 calls/day for tracking in the
+worst case — no stated daily cap on their free tier, but worth watching
+via Finnhub's own dashboard once real traffic exists.
 
 **On Jesse specifically:** its core (backtesting/research) is free, but
 live/paper trading requires a paid licensed plugin plus a persistent
@@ -126,9 +158,10 @@ running win/loss count per strategy in `strategy_performance` (full ROI/
 TP-rate stats are Phase 5).
 
 **Price sources:** crypto comes from Binance's public REST API — free, no
-key required. Forex needs a Twelve Data API key (`TWELVE_DATA_API_KEY`,
-free tier available) — without it, forex signals just won't be tracked
-yet; crypto tracking works regardless.
+key required. Forex live price comes from Finnhub (`FINNHUB_API_KEY`) —
+without it, forex signals just won't be tracked yet; crypto tracking
+works regardless. (Twelve Data is used only for forex *candles*, i.e.
+generation — see "FX data architecture" above.)
 
 **What actually triggers it:** `netlify/functions/track-signals-cron.mts`
 is a Netlify Scheduled Function that runs every 5 minutes (`*/5 * * * *`)
@@ -367,13 +400,13 @@ Notifications).
   it fires at least once after your first deploy (check Netlify's Functions
   log) before trusting signals to close themselves
 - No rate limiting on the webhook/API routes yet
-- Forex tracking is inactive until `TWELVE_DATA_API_KEY` is set
+- Forex tracking is inactive until `FINNHUB_API_KEY` is set; forex
+  generation is inactive until `TWELVE_DATA_API_KEY` is set (they're
+  independent — one can work without the other)
 - Both `alpha-momentum-engine.ts` and `fx-momentum-engine.ts` are working
   examples, not validated trading edges — let them run and accumulate
   closed signals before trusting their AlphaScores, and expect to tune or
   replace their stop/target percentages once real outcomes exist
-- `fx-momentum-engine.ts` additionally needs `TWELVE_DATA_API_KEY` to
-  generate anything at all (same key Phase 4's forex tracking needs)
 
 ## Next steps (Phase 5+)
 
