@@ -1,0 +1,542 @@
+--- a/src/app/admin/signals/actions.ts
++++ b/src/app/admin/signals/actions.ts
+@@ -4,6 +4,115 @@
+ import { adminDb } from "@/lib/firebase-admin";
+ import { requireAdmin } from "@/lib/get-server-user";
+ import { logAdminAction } from "@/lib/audit-log";
++import { isDuplicateSignal, normalizeSignal, validateNormalizedSignal } from "@/lib/signal-pipeline";
++import type { Signal } from "@/lib/types";
++
++export type ManualSignalState = {
++  ok: boolean;
++  message: string;
++};
++
++export async function createManualSignal(
++  _previousState: ManualSignalState,
++  formData: FormData,
++): Promise<ManualSignalState> {
++  const admin = await requireAdmin();
++  if (!admin) return { ok: false, message: "Admin access required." };
++
++  const market = String(formData.get("market") ?? "").trim().toLowerCase();
++  const symbol = String(formData.get("symbol") ?? "").trim().toUpperCase();
++  const direction = String(formData.get("direction") ?? "").trim().toUpperCase();
++  const strategyId = String(formData.get("strategyId") ?? "").trim();
++  const timeframe = String(formData.get("timeframe") ?? "").trim().toLowerCase();
++  const entry = String(formData.get("entry") ?? "").trim();
++  const stopLoss = String(formData.get("stopLoss") ?? "").trim();
++  const confidence = String(formData.get("confidence") ?? "60").trim();
++  const note = String(formData.get("note") ?? "").trim();
++  const premiumOnly = formData.get("premiumOnly") === "on";
++
++  const takeProfits = [1, 2, 3]
++    .map((level) => String(formData.get(`tp${level}`) ?? "").trim())
++    .filter(Boolean);
++
++  if (!strategyId) {
++    return { ok: false, message: "Select a strategy." };
++  }
++
++  const raw = {
++    market,
++    symbol,
++    direction,
++    entry,
++    stopLoss,
++    takeProfits,
++    timeframe,
++    confidence,
++    note,
++    premiumOnly,
++  };
++
++  let signal: Signal;
++  try {
++    signal = normalizeSignal(raw, {
++      sourceId: "admin_manual",
++      strategyId,
++    });
++  } catch {
++    return { ok: false, message: "Signal could not be normalized. Check the numeric fields." };
++  }
++
++  const validation = validateNormalizedSignal(signal);
++  if (!validation.valid) {
++    return { ok: false, message: validation.errors.join(" ") };
++  }
++
++  const db = adminDb();
++
++  // Keep the manual source visible and explicitly classified as an admin source.
++  await db.collection("signal_sources").doc("admin_manual").set(
++    {
++      name: "Admin Manual Signals",
++      type: "admin",
++      authorized: true,
++      active: true,
++      connectionDetails: "Created through the protected Admin → Signals form.",
++    },
++    { merge: true },
++  );
++
++  const openSnap = await db
++    .collection("signals")
++    .where("status", "in", ["PENDING", "ACTIVE", "TP1_HIT", "TP2_HIT", "TP3_HIT"])
++    .get();
++  const openSignals = openSnap.docs.map((doc) => ({ id: doc.id, ...doc.data() }) as Signal);
++
++  if (isDuplicateSignal(signal, openSignals)) {
++    return {
++      ok: false,
++      message: "A matching open manual signal already exists for this symbol, direction, and entry.",
++    };
++  }
++
++  const ref = db.collection("signals").doc();
++  signal.id = ref.id;
++  await ref.set(signal);
++
++  await logAdminAction({
++    actorUid: admin.uid,
++    action: "SIGNAL_CREATED_MANUALLY",
++    targetType: "signal",
++    targetId: ref.id,
++    details: `${signal.direction} ${signal.symbol} @ ${signal.entry}; strategy=${signal.strategyId}; premiumOnly=${signal.premiumOnly}`,
++  });
++
++  revalidatePath("/");
++  revalidatePath("/crypto");
++  revalidatePath("/forex");
++  revalidatePath("/history");
++  revalidatePath("/admin/signals");
++
++  return { ok: true, message: `Signal created successfully: ${signal.symbol} ${signal.direction}.` };
++}
+ 
+ export async function cancelSignal(signalId: string, reason: string) {
+   const admin = await requireAdmin();
+--- a/src/app/admin/signals/page.tsx
++++ b/src/app/admin/signals/page.tsx
+@@ -1,5 +1,6 @@
+ import { getSignals, getStrategies } from "@/lib/signals-data";
+ import StatusBadge from "@/components/StatusBadge";
++import ManualSignalForm from "./ManualSignalForm";
+ import { cancelSignal, closeSignal, modifyStopLoss, markInvalid } from "./actions";
+ 
+ export const dynamic = "force-dynamic";
+@@ -12,112 +13,122 @@
+   const strategyName = (id: string) => strategies.find((s) => s.id === id)?.name ?? id;
+ 
+   return (
+-    <div className="space-y-4">
++    <div className="space-y-6">
+       <div>
+         <h1 className="text-2xl font-semibold">Signal moderation</h1>
+         <p className="mt-1 text-sm" style={{ color: "var(--text-secondary)" }}>
+-          Overrides only apply to open signals. Every action here is
+-          recorded in the audit log.
++          Create admin signals or override open signals. Every admin action is recorded in the audit log.
+         </p>
+       </div>
+ 
+-      {openSignals.length === 0 && (
+-        <p className="text-sm" style={{ color: "var(--text-tertiary)" }}>
+-          No open signals right now.
+-        </p>
+-      )}
++      <ManualSignalForm strategies={strategies} />
+ 
+-      <div className="space-y-3">
+-        {openSignals.map((signal) => (
+-          <div
+-            key={signal.id}
+-            className="rounded-md border p-4"
+-            style={{ background: "var(--surface)", borderColor: "var(--border)" }}
+-          >
+-            <div className="flex flex-wrap items-center justify-between gap-2">
+-              <div className="flex items-center gap-2">
+-                <span className="font-data font-semibold">{signal.symbol}</span>
+-                <span
+-                  className="text-xs font-semibold"
+-                  style={{ color: signal.direction === "LONG" ? "var(--long)" : "var(--short)" }}
++      <section>
++        <div>
++          <h2 className="text-lg font-semibold">Open signals</h2>
++          <p className="mt-1 text-sm" style={{ color: "var(--text-secondary)" }}>
++            Overrides only apply to open signals.
++          </p>
++        </div>
++
++        {openSignals.length === 0 && (
++          <p className="mt-3 text-sm" style={{ color: "var(--text-tertiary)" }}>
++            No open signals right now.
++          </p>
++        )}
++
++        <div className="mt-3 space-y-3">
++          {openSignals.map((signal) => (
++            <div
++              key={signal.id}
++              className="rounded-md border p-4"
++              style={{ background: "var(--surface)", borderColor: "var(--border)" }}
++            >
++              <div className="flex flex-wrap items-center justify-between gap-2">
++                <div className="flex items-center gap-2">
++                  <span className="font-data font-semibold">{signal.symbol}</span>
++                  <span
++                    className="text-xs font-semibold"
++                    style={{ color: signal.direction === "LONG" ? "var(--long)" : "var(--short)" }}
++                  >
++                    {signal.direction}
++                  </span>
++                  <span className="text-xs" style={{ color: "var(--text-tertiary)" }}>
++                    {strategyName(signal.strategyId)}
++                  </span>
++                </div>
++                <StatusBadge status={signal.status} />
++              </div>
++
++              <div className="mt-2 flex gap-4 font-data text-xs" style={{ color: "var(--text-secondary)" }}>
++                <span>Entry {signal.entry}</span>
++                <span>SL {signal.stopLoss}</span>
++                <span>TP1 {signal.takeProfits[0]?.price}</span>
++              </div>
++
++              <div className="mt-3 flex flex-wrap items-center gap-2">
++                <form action={closeSignal.bind(null, signal.id)}>
++                  <button
++                    type="submit"
++                    className="rounded-sm border px-2 py-1 text-xs"
++                    style={{ borderColor: "var(--border-strong)" }}
++                  >
++                    Close
++                  </button>
++                </form>
++
++                <form action={cancelSignal.bind(null, signal.id, "Cancelled by admin.")}>
++                  <button
++                    type="submit"
++                    className="rounded-sm border px-2 py-1 text-xs"
++                    style={{ color: "var(--short)", borderColor: "var(--short-dim)" }}
++                  >
++                    Cancel
++                  </button>
++                </form>
++
++                <form action={markInvalid.bind(null, signal.id, "Flagged as malformed/invalid by admin.")}>
++                  <button
++                    type="submit"
++                    className="rounded-sm border px-2 py-1 text-xs"
++                    style={{ color: "var(--pending)", borderColor: "var(--pending)" }}
++                  >
++                    Mark invalid
++                  </button>
++                </form>
++
++                <form
++                  action={async (fd: FormData) => {
++                    "use server";
++                    const value = Number(fd.get("newStopLoss"));
++                    if (Number.isFinite(value) && value > 0) {
++                      await modifyStopLoss(signal.id, value);
++                    }
++                  }}
++                  className="flex items-center gap-1"
+                 >
+-                  {signal.direction}
+-                </span>
+-                <span className="text-xs" style={{ color: "var(--text-tertiary)" }}>
+-                  {strategyName(signal.strategyId)}
+-                </span>
++                  <input
++                    name="newStopLoss"
++                    type="number"
++                    step="any"
++                    placeholder="New SL"
++                    required
++                    className="w-24 rounded-md border px-2 py-1 text-xs"
++                    style={{ background: "var(--bg-elevated)", borderColor: "var(--border)" }}
++                  />
++                  <button
++                    type="submit"
++                    className="rounded-sm border px-2 py-1 text-xs"
++                    style={{ borderColor: "var(--border-strong)" }}
++                  >
++                    Update SL
++                  </button>
++                </form>
+               </div>
+-              <StatusBadge status={signal.status} />
+             </div>
+-
+-            <div className="mt-2 flex gap-4 font-data text-xs" style={{ color: "var(--text-secondary)" }}>
+-              <span>Entry {signal.entry}</span>
+-              <span>SL {signal.stopLoss}</span>
+-              <span>TP1 {signal.takeProfits[0]?.price}</span>
+-            </div>
+-
+-            <div className="mt-3 flex flex-wrap items-center gap-2">
+-              <form action={closeSignal.bind(null, signal.id)}>
+-                <button
+-                  type="submit"
+-                  className="rounded-sm border px-2 py-1 text-xs"
+-                  style={{ borderColor: "var(--border-strong)" }}
+-                >
+-                  Close
+-                </button>
+-              </form>
+-
+-              <form action={cancelSignal.bind(null, signal.id, "Cancelled by admin.")}>
+-                <button
+-                  type="submit"
+-                  className="rounded-sm border px-2 py-1 text-xs"
+-                  style={{ color: "var(--short)", borderColor: "var(--short-dim)" }}
+-                >
+-                  Cancel
+-                </button>
+-              </form>
+-
+-              <form action={markInvalid.bind(null, signal.id, "Flagged as malformed/invalid by admin.")}>
+-                <button
+-                  type="submit"
+-                  className="rounded-sm border px-2 py-1 text-xs"
+-                  style={{ color: "var(--pending)", borderColor: "var(--pending)" }}
+-                >
+-                  Mark invalid
+-                </button>
+-              </form>
+-
+-              <form
+-                action={async (fd: FormData) => {
+-                  "use server";
+-                  const value = Number(fd.get("newStopLoss"));
+-                  if (Number.isFinite(value) && value > 0) {
+-                    await modifyStopLoss(signal.id, value);
+-                  }
+-                }}
+-                className="flex items-center gap-1"
+-              >
+-                <input
+-                  name="newStopLoss"
+-                  type="number"
+-                  step="any"
+-                  placeholder="New SL"
+-                  required
+-                  className="w-24 rounded-md border px-2 py-1 text-xs"
+-                  style={{ background: "var(--bg-elevated)", borderColor: "var(--border)" }}
+-                />
+-                <button
+-                  type="submit"
+-                  className="rounded-sm border px-2 py-1 text-xs"
+-                  style={{ borderColor: "var(--border-strong)" }}
+-                >
+-                  Update SL
+-                </button>
+-              </form>
+-            </div>
+-          </div>
+-        ))}
+-      </div>
++          ))}
++        </div>
++      </section>
+     </div>
+   );
+ }
+--- a/scripts/seed.mjs
++++ b/scripts/seed.mjs
+@@ -29,7 +29,7 @@
+     market: "crypto",
+     timeframes: ["15m", "1h"],
+     instruments: ["BTC/USDT", "ETH/USDT", "SOL/USDT"],
+-    engine: "Jesse",
++    engine: "Alpha Momentum Engine",
+     riskLevel: "medium",
+     active: true,
+   },
+@@ -40,7 +40,7 @@
+     market: "forex",
+     timeframes: ["30m", "4h"],
+     instruments: ["EUR/USD", "GBP/USD", "USD/JPY"],
+-    engine: "Jesse",
++    engine: "FX Momentum Engine",
+     riskLevel: "medium",
+     active: true,
+   },
+@@ -71,6 +71,14 @@
+     active: true,
+     connectionDetails: "Runs in-process via /api/cron/generate-signals — requires TWELVE_DATA_API_KEY.",
+   },
++  {
++    id: "admin_manual",
++    name: "Admin Manual Signals",
++    type: "admin",
++    authorized: true,
++    active: true,
++    connectionDetails: "Created through the protected Admin → Signals form.",
++  },
+ ];
+ 
+ async function seed() {
+@@ -82,7 +90,7 @@
+     await db.collection("signal_sources").doc(id).set(data, { merge: true });
+     console.log(`Seeded signal source: ${id}`);
+   }
+-  console.log("Done. Signals collection is left empty — ingest via the webhook routes or the admin panel.");
++  console.log("Done. Signals collection is left empty — ingest via the webhook routes, admin panel, or internal engines.");
+ }
+ 
+ seed().then(() => process.exit(0));
+--- /dev/null
++++ b/src/app/admin/signals/ManualSignalForm.tsx
+@@ -0,0 +1,149 @@
++"use client";
++
++import { useActionState } from "react";
++import type { Strategy } from "@/lib/types";
++import { createManualSignal, type ManualSignalState } from "./actions";
++
++const initialState: ManualSignalState = { ok: false, message: "" };
++
++const fieldClass =
++  "w-full rounded-md border px-3 py-2 text-sm outline-none";
++const fieldStyle = {
++  background: "var(--bg-elevated)",
++  borderColor: "var(--border)",
++  color: "var(--text-primary)",
++};
++
++export default function ManualSignalForm({ strategies }: { strategies: Strategy[] }) {
++  const [state, formAction, pending] = useActionState(createManualSignal, initialState);
++
++  return (
++    <section
++      className="rounded-md border p-4"
++      style={{ background: "var(--surface)", borderColor: "var(--border)" }}
++    >
++      <div>
++        <h2 className="text-lg font-semibold">Create manual signal</h2>
++        <p className="mt-1 text-sm" style={{ color: "var(--text-secondary)" }}>
++          Admin-created signals use the same normalization, validation, risk scoring and duplicate checks as automated signals.
++        </p>
++      </div>
++
++      <form action={formAction} className="mt-4 space-y-4">
++        <div className="grid gap-3 md:grid-cols-3">
++          <label className="text-sm">
++            <span className="mb-1 block">Market</span>
++            <select name="market" defaultValue="crypto" className={fieldClass} style={fieldStyle}>
++              <option value="crypto">Crypto</option>
++              <option value="forex">Forex</option>
++            </select>
++          </label>
++
++          <label className="text-sm">
++            <span className="mb-1 block">Symbol</span>
++            <input name="symbol" required placeholder="BTC/USDT" className={fieldClass} style={fieldStyle} />
++          </label>
++
++          <label className="text-sm">
++            <span className="mb-1 block">Direction</span>
++            <select name="direction" defaultValue="LONG" className={fieldClass} style={fieldStyle}>
++              <option value="LONG">LONG</option>
++              <option value="SHORT">SHORT</option>
++            </select>
++          </label>
++        </div>
++
++        <div className="grid gap-3 md:grid-cols-3">
++          <label className="text-sm">
++            <span className="mb-1 block">Strategy</span>
++            <select name="strategyId" required defaultValue="" className={fieldClass} style={fieldStyle}>
++              <option value="" disabled>Select strategy</option>
++              {strategies.map((strategy) => (
++                <option key={strategy.id} value={strategy.id}>
++                  {strategy.name}
++                </option>
++              ))}
++            </select>
++          </label>
++
++          <label className="text-sm">
++            <span className="mb-1 block">Timeframe</span>
++            <select name="timeframe" defaultValue="15m" className={fieldClass} style={fieldStyle}>
++              <option value="5m">5m</option>
++              <option value="15m">15m</option>
++              <option value="30m">30m</option>
++              <option value="1h">1h</option>
++              <option value="4h">4h</option>
++              <option value="1d">1d</option>
++            </select>
++          </label>
++
++          <label className="text-sm">
++            <span className="mb-1 block">Confidence (1–100)</span>
++            <input name="confidence" type="number" min="1" max="100" defaultValue="75" required className={fieldClass} style={fieldStyle} />
++          </label>
++        </div>
++
++        <div className="grid gap-3 md:grid-cols-4">
++          <label className="text-sm">
++            <span className="mb-1 block">Entry</span>
++            <input name="entry" type="number" min="0" step="any" required placeholder="120000" className={fieldClass} style={fieldStyle} />
++          </label>
++
++          <label className="text-sm">
++            <span className="mb-1 block">Stop Loss</span>
++            <input name="stopLoss" type="number" min="0" step="any" required placeholder="118000" className={fieldClass} style={fieldStyle} />
++          </label>
++
++          <label className="text-sm">
++            <span className="mb-1 block">TP1</span>
++            <input name="tp1" type="number" min="0" step="any" required placeholder="122000" className={fieldClass} style={fieldStyle} />
++          </label>
++
++          <label className="text-sm">
++            <span className="mb-1 block">TP2</span>
++            <input name="tp2" type="number" min="0" step="any" placeholder="124000" className={fieldClass} style={fieldStyle} />
++          </label>
++        </div>
++
++        <div className="grid gap-3 md:grid-cols-2">
++          <label className="text-sm">
++            <span className="mb-1 block">TP3 (optional)</span>
++            <input name="tp3" type="number" min="0" step="any" placeholder="126000" className={fieldClass} style={fieldStyle} />
++          </label>
++
++          <label className="text-sm">
++            <span className="mb-1 block">Note (optional)</span>
++            <input name="note" placeholder="Reason or setup context" className={fieldClass} style={fieldStyle} />
++          </label>
++        </div>
++
++        <label className="flex items-center gap-2 text-sm" style={{ color: "var(--text-secondary)" }}>
++          <input name="premiumOnly" type="checkbox" />
++          Premium-only signal
++        </label>
++
++        {state.message && (
++          <div
++            className="rounded-md border px-3 py-2 text-sm"
++            style={{
++              borderColor: state.ok ? "var(--long-dim)" : "var(--short-dim)",
++              color: state.ok ? "var(--long)" : "var(--short)",
++            }}
++          >
++            {state.message}
++          </div>
++        )}
++
++        <button
++          type="submit"
++          disabled={pending}
++          className="rounded-md border px-4 py-2 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-50"
++          style={{ borderColor: "var(--accent)", color: "var(--accent)" }}
++        >
++          {pending ? "Creating signal…" : "Create signal"}
++        </button>
++      </form>
++    </section>
++  );
++}
