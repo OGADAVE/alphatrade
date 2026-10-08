@@ -25,7 +25,7 @@ async function generateSignalsCron() {
 export default generateSignalsCron;
 
 export const config: Config = {
-  // Matches the alpha-momentum engine's 15m timeframe — no point checking
+  // Matches the alpha-momentum engine's 30m timeframe — no point checking
   // more often than a new candle can close.
-  schedule: "*/15 * * * *",
+  schedule: "*/30 * * * *",
 };
