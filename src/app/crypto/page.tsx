@@ -8,7 +8,11 @@ export const dynamic = "force-dynamic";
 export default async function CryptoSignalsPage() {
   const [signals, strategies, user] = await Promise.all([getSignals(), getStrategies(), getServerUser()]);
   const entitlement = await getEntitlement(user?.uid ?? null);
-  const cryptoSignals = applyEntitlementToAll(signals.filter((s) => s.market === "crypto"), entitlement);
+  // Drafts (PENDING) are admin-only — see /admin/signals.
+  const cryptoSignals = applyEntitlementToAll(
+    signals.filter((s) => s.market === "crypto" && s.status !== "PENDING"),
+    entitlement,
+  );
   const strategyName = (id: string) => strategies.find((s) => s.id === id)?.name;
 
   return (

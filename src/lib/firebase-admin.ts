@@ -39,8 +39,19 @@ function getAdminApp(): App {
   return cachedApp;
 }
 
+let cachedDb: Firestore | null = null;
+
 export function adminDb(): Firestore {
-  return getFirestore(getAdminApp());
+  if (cachedDb) return cachedDb;
+  cachedDb = getFirestore(getAdminApp());
+  // Without this, writing ANY object with an undefined-valued field (e.g.
+  // `note: undefined` when a webhook payload omits a note, or
+  // `activatedAt: undefined` on a draft signal) throws instead of simply
+  // omitting that field — a real bug this fixes once, globally, rather
+  // than requiring every call site to manually strip undefined keys.
+  // Must be set before any other Firestore operation on this instance.
+  cachedDb.settings({ ignoreUndefinedProperties: true });
+  return cachedDb;
 }
 
 export function adminAuth(): Auth {

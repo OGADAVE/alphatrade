@@ -15,8 +15,7 @@ export default async function HistoryPage() {
     <div>
       <h1 className="text-2xl font-semibold">Signal history</h1>
       <p className="mt-1 text-sm" style={{ color: "var(--text-secondary)" }}>
-        Closed signals with final results. Results stay visible on premium
-        signals even when restricted — only entry/exit levels are gated.
+        Closed signals with final results.
       </p>
       <div className="mt-6 grid gap-3 sm:grid-cols-2">
         {closed.map((s) => (

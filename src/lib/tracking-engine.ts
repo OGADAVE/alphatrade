@@ -89,9 +89,6 @@ export function evaluateSignal(signal: Signal, currentPrice: number): TrackingUp
   } else if (hitLevels.length > 0) {
     const highest = Math.max(...hitLevels) as 1 | 2 | 3;
     status = (`TP${highest}_HIT` as SignalStatus);
-  } else if (signal.status === "PENDING") {
-    status = "ACTIVE";
-    changed = true;
   }
 
   if (!changed && maxFavorableMove === (signal.maxFavorableMove ?? 0) && maxAdverseMove === (signal.maxAdverseMove ?? 0)) {

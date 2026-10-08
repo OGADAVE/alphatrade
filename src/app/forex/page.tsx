@@ -8,7 +8,11 @@ export const dynamic = "force-dynamic";
 export default async function ForexSignalsPage() {
   const [signals, strategies, user] = await Promise.all([getSignals(), getStrategies(), getServerUser()]);
   const entitlement = await getEntitlement(user?.uid ?? null);
-  const forexSignals = applyEntitlementToAll(signals.filter((s) => s.market === "forex"), entitlement);
+  // Drafts (PENDING) are admin-only — see /admin/signals.
+  const forexSignals = applyEntitlementToAll(
+    signals.filter((s) => s.market === "forex" && s.status !== "PENDING"),
+    entitlement,
+  );
   const strategyName = (id: string) => strategies.find((s) => s.id === id)?.name;
 
   return (

@@ -32,13 +32,18 @@ export default async function WatchlistPage() {
   const strategyName = (id: string) => strategies.find((s) => s.id === id)?.name;
   const entitlement = await getEntitlement(serverUser.uid);
 
+  // Drafts (PENDING) are admin-only — defensive filter, since a user
+  // can't normally favorite/watch a signal they were never shown one.
   const favoritedSignals = applyEntitlementToAll(
-    signals.filter((s) => serverUser.favoriteSignalIds.includes(s.id)),
+    signals.filter((s) => serverUser.favoriteSignalIds.includes(s.id) && s.status !== "PENDING"),
     entitlement,
   );
   const watchlistSignals = applyEntitlementToAll(
     signals.filter(
-      (s) => serverUser.watchlist.includes(s.symbol) && !serverUser.favoriteSignalIds.includes(s.id),
+      (s) =>
+        serverUser.watchlist.includes(s.symbol) &&
+        !serverUser.favoriteSignalIds.includes(s.id) &&
+        s.status !== "PENDING",
     ),
     entitlement,
   );

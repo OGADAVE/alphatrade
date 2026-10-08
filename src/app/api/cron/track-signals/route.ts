@@ -6,7 +6,11 @@ import { evaluateSignal } from "@/lib/tracking-engine";
 import { computeRMultiple } from "@/lib/alpha-score";
 import type { Market, Signal, StrategyPerformanceAggregate } from "@/lib/types";
 
-const OPEN_STATUSES = ["PENDING", "ACTIVE", "TP1_HIT", "TP2_HIT", "TP3_HIT"];
+// PENDING is deliberately excluded — it now means "admin draft, not yet
+// published" (see admin/signals/create-actions.ts), and a draft must
+// never be picked up and silently moved by the tracker before an admin
+// explicitly publishes it.
+const OPEN_STATUSES = ["ACTIVE", "TP1_HIT", "TP2_HIT", "TP3_HIT"];
 
 function isAuthorized(request: NextRequest): boolean {
   const secret = process.env.CRON_SECRET;

@@ -10,12 +10,15 @@ import { getEntitlement, applyEntitlementToAll } from "@/lib/entitlements";
 export const dynamic = "force-dynamic";
 
 export default async function HomePage() {
-  const [signals, strategies, performance, user] = await Promise.all([
+  const [rawSignals, strategies, performance, user] = await Promise.all([
     getSignals(),
     getStrategies(),
     getStrategyPerformance(),
     getServerUser(),
   ]);
+  // Drafts (PENDING) are admin-only — see /admin/signals — and must never
+  // reach a public page.
+  const signals = rawSignals.filter((s) => s.status !== "PENDING");
   const entitlement = await getEntitlement(user?.uid ?? null);
   const viewSignals = applyEntitlementToAll(signals, entitlement);
   const strategyName = (id: string) => strategies.find((s) => s.id === id)?.name;
@@ -34,7 +37,7 @@ export default async function HomePage() {
           Automated signals. No manual guesswork.
         </h1>
         <p className="mt-2 max-w-2xl text-sm" style={{ color: "var(--text-secondary)" }}>
-          AlphaTrade Signals ingests, validates, and tracks crypto and forex
+          AlphaTrade is your #1 Signals provider — it ingests, validates, and tracks crypto and forex
           trades from multiple authorized sources — then tells you exactly
           when TP or SL hits, automatically.
         </p>

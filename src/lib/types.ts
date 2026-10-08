@@ -66,6 +66,10 @@ export interface Signal {
   // entry/stopLoss/takeProfits/note have been redacted for a non-premium
   // viewer. See src/lib/entitlements.ts.
   restricted?: boolean;
+  // Set only on manually created signals (src/app/admin/signals/create-actions.ts)
+  // — which admin account posted it. Never set by webhooks or engines.
+  createdByUid?: string;
+  createdByEmail?: string;
   createdAt: string;
   activatedAt?: string;
   closedAt?: string;

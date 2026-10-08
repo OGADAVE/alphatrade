@@ -29,7 +29,7 @@ const strategies = [
     market: "crypto",
     timeframes: ["15m", "1h"],
     instruments: ["BTC/USDT", "ETH/USDT", "SOL/USDT"],
-    engine: "Alpha Momentum Engine",
+    engine: "Jesse",
     riskLevel: "medium",
     active: true,
   },
@@ -39,8 +39,18 @@ const strategies = [
     description: "Session-based breakout strategy for major forex pairs.",
     market: "forex",
     timeframes: ["30m", "4h"],
-    instruments: ["EUR/USD", "GBP/USD", "USD/JPY"],
-    engine: "FX Momentum Engine",
+    instruments: ["EUR/USD", "GBP/USD", "USD/JPY", "AUD/USD", "USD/CAD", "USD/CHF", "NZD/USD", "EUR/GBP", "EUR/JPY", "GBP/JPY"],
+    engine: "Jesse",
+    riskLevel: "medium",
+    active: true,
+  },
+  {
+    id: "strategy_admin_signals",
+    name: "Official AlphaTrade Signals",
+    description: "Manually posted by AlphaTrade admins/analysts — tracked separately from automated strategies.",
+    market: "both",
+    timeframes: [],
+    instruments: [],
     riskLevel: "medium",
     active: true,
   },
@@ -69,15 +79,15 @@ const signalSources = [
     type: "internal_algorithm",
     authorized: true,
     active: true,
-    connectionDetails: "Runs in-process via /api/cron/generate-signals — requires TWELVE_DATA_API_KEY.",
+    connectionDetails: "Runs in-process via /api/cron/generate-signals — requires TWELVE_DATA_API_KEY for candles, FINNHUB_API_KEY for tracking.",
   },
   {
-    id: "admin_manual",
-    name: "Admin Manual Signals",
+    id: "admin",
+    name: "Admin / Analyst Manual Entry",
     type: "admin",
     authorized: true,
     active: true,
-    connectionDetails: "Created through the protected Admin → Signals form.",
+    connectionDetails: "Created via /admin/signals by any account with role=admin. Per-signal attribution via createdByEmail.",
   },
 ];
 
@@ -90,7 +100,7 @@ async function seed() {
     await db.collection("signal_sources").doc(id).set(data, { merge: true });
     console.log(`Seeded signal source: ${id}`);
   }
-  console.log("Done. Signals collection is left empty — ingest via the webhook routes, admin panel, or internal engines.");
+  console.log("Done. Signals collection is left empty — ingest via the webhook routes or the admin panel.");
 }
 
 seed().then(() => process.exit(0));
