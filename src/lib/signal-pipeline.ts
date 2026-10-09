@@ -52,9 +52,9 @@ export function normalizeSignal(
   // consumer — Firestore, the public API, the UI — gets clean numbers
   // instead of propagating floating-point noise like 1.1163670399999999
   // from upstream percentage math (e.g. entry * (1 - stopPct)).
-  const roundedEntry = entry != null ? roundPrice(entry, market, symbol) : 0;
-  const roundedStopLoss = stopLoss != null ? roundPrice(stopLoss, market, symbol) : 0;
-  const roundedTakeProfits = takeProfitPrices.map((p) => roundPrice(p, market, symbol));
+  const roundedEntry = entry != null ? roundPrice(entry) : 0;
+  const roundedStopLoss = stopLoss != null ? roundPrice(stopLoss) : 0;
+  const roundedTakeProfits = takeProfitPrices.map((p) => roundPrice(p));
 
   const { riskScore, riskLevel } = computeRisk({
     direction,

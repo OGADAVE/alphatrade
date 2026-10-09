@@ -215,10 +215,10 @@ export default async function SignalModerationPage() {
                   </form>
                 </div>
                 <div className="mt-2 flex gap-4 font-data text-xs" style={{ color: "var(--text-secondary)" }}>
-                  <span>Entry {formatPrice(signal.entry, signal.market, signal.symbol)}</span>
-                  <span>SL {formatPrice(signal.stopLoss, signal.market, signal.symbol)}</span>
+                  <span>Entry {formatPrice(signal.entry)}</span>
+                  <span>SL {formatPrice(signal.stopLoss)}</span>
                   {signal.takeProfits[0] && (
-                    <span>TP1 {formatPrice(signal.takeProfits[0].price, signal.market, signal.symbol)}</span>
+                    <span>TP1 {formatPrice(signal.takeProfits[0].price)}</span>
                   )}
                 </div>
                 {signal.note && (
@@ -268,10 +268,10 @@ export default async function SignalModerationPage() {
               </div>
 
               <div className="mt-2 flex gap-4 font-data text-xs" style={{ color: "var(--text-secondary)" }}>
-                <span>Entry {formatPrice(signal.entry, signal.market, signal.symbol)}</span>
-                <span>SL {formatPrice(signal.stopLoss, signal.market, signal.symbol)}</span>
+                <span>Entry {formatPrice(signal.entry)}</span>
+                <span>SL {formatPrice(signal.stopLoss)}</span>
                 {signal.takeProfits[0] && (
-                  <span>TP1 {formatPrice(signal.takeProfits[0].price, signal.market, signal.symbol)}</span>
+                  <span>TP1 {formatPrice(signal.takeProfits[0].price)}</span>
                 )}
               </div>
 

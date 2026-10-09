@@ -4,9 +4,12 @@ import { getSignalById, getStrategyById } from "@/lib/signals-data";
 import { getServerUser } from "@/lib/get-server-user";
 import { getEntitlement, applyEntitlement } from "@/lib/entitlements";
 import StatusBadge from "@/components/StatusBadge";
+import LivePrice from "@/components/LivePrice";
 import { formatPrice, formatPercent } from "@/lib/format";
 
 export const dynamic = "force-dynamic";
+
+const TERMINAL_STATUSES = ["FULL_TP", "SL_HIT", "CANCELLED", "EXPIRED", "CLOSED"];
 
 export default async function SignalDetailPage({
   params,
@@ -22,6 +25,10 @@ export default async function SignalDetailPage({
   const signal = applyEntitlement(rawSignal, entitlement);
 
   const directionColor = signal.direction === "LONG" ? "var(--long)" : "var(--short)";
+  const isOpen = !TERMINAL_STATUSES.includes(signal.status);
+  const tp1 = signal.takeProfits.find((tp) => tp.level === 1);
+  const tp2 = signal.takeProfits.find((tp) => tp.level === 2);
+  const tp3 = signal.takeProfits.find((tp) => tp.level === 3);
 
   return (
     <div className="max-w-2xl">
@@ -64,68 +71,91 @@ export default async function SignalDetailPage({
         </p>
       )}
 
+      {/* Entry, Current, TP1, TP2, TP3, SL — in that order. Current price
+          is live market state, fetched fresh (never stored on the
+          signal), and stays visible even when restricted since it isn't
+          proprietary trade data. */}
       <div
-        className="mt-6 grid grid-cols-2 gap-4 rounded-md border p-5 sm:grid-cols-4"
+        className="mt-6 rounded-md border p-5"
         style={{ background: "var(--surface)", borderColor: "var(--border)" }}
       >
-        <div>
-          <p className="text-xs" style={{ color: "var(--text-tertiary)" }}>Entry</p>
-          <p className="font-data text-lg">
-            {signal.restricted ? "🔒" : formatPrice(signal.entry, signal.market, signal.symbol)}
-          </p>
+        <div className="flex items-center justify-between py-1.5">
+          <span className="text-sm" style={{ color: "var(--text-tertiary)" }}>Entry</span>
+          <span className="font-data text-lg">
+            {signal.restricted ? "🔒" : formatPrice(signal.entry)}
+          </span>
         </div>
-        <div>
-          <p className="text-xs" style={{ color: "var(--text-tertiary)" }}>Stop loss</p>
-          <p className="font-data text-lg" style={{ color: "var(--short)" }}>
-            {signal.restricted ? "🔒" : formatPrice(signal.stopLoss, signal.market, signal.symbol)}
-          </p>
+        <div className="flex items-center justify-between border-t py-1.5" style={{ borderColor: "var(--border)" }}>
+          <span className="text-sm" style={{ color: "var(--text-tertiary)" }}>Current</span>
+          {isOpen ? (
+            <span className="text-lg">
+              <LivePrice symbol={signal.symbol} market={signal.market} />
+            </span>
+          ) : (
+            <span className="font-data text-lg" style={{ color: "var(--text-tertiary)" }}>—</span>
+          )}
         </div>
+        {tp1 && (
+          <div className="flex items-center justify-between border-t py-1.5" style={{ borderColor: "var(--border)" }}>
+            <span className="text-sm" style={{ color: "var(--text-tertiary)" }}>TP1</span>
+            <span className="flex items-center gap-2 font-data text-lg" style={{ color: "var(--long)" }}>
+              {signal.restricted ? "🔒" : formatPrice(tp1.price)}
+              {!signal.restricted && (
+                <span className="text-xs" style={{ color: tp1.hitAt ? "var(--long)" : "var(--text-tertiary)" }}>
+                  {tp1.hitAt ? "Hit" : "Pending"}
+                </span>
+              )}
+            </span>
+          </div>
+        )}
+        {tp2 && (
+          <div className="flex items-center justify-between border-t py-1.5" style={{ borderColor: "var(--border)" }}>
+            <span className="text-sm" style={{ color: "var(--text-tertiary)" }}>TP2</span>
+            <span className="flex items-center gap-2 font-data text-lg" style={{ color: "var(--long)" }}>
+              {signal.restricted ? "🔒" : formatPrice(tp2.price)}
+              {!signal.restricted && (
+                <span className="text-xs" style={{ color: tp2.hitAt ? "var(--long)" : "var(--text-tertiary)" }}>
+                  {tp2.hitAt ? "Hit" : "Pending"}
+                </span>
+              )}
+            </span>
+          </div>
+        )}
+        {tp3 && (
+          <div className="flex items-center justify-between border-t py-1.5" style={{ borderColor: "var(--border)" }}>
+            <span className="text-sm" style={{ color: "var(--text-tertiary)" }}>TP3</span>
+            <span className="flex items-center gap-2 font-data text-lg" style={{ color: "var(--long)" }}>
+              {signal.restricted ? "🔒" : formatPrice(tp3.price)}
+              {!signal.restricted && (
+                <span className="text-xs" style={{ color: tp3.hitAt ? "var(--long)" : "var(--text-tertiary)" }}>
+                  {tp3.hitAt ? "Hit" : "Pending"}
+                </span>
+              )}
+            </span>
+          </div>
+        )}
+        <div className="flex items-center justify-between border-t py-1.5" style={{ borderColor: "var(--border)" }}>
+          <span className="text-sm" style={{ color: "var(--text-tertiary)" }}>SL</span>
+          <span className="font-data text-lg" style={{ color: "var(--short)" }}>
+            {signal.restricted ? "🔒" : formatPrice(signal.stopLoss)}
+          </span>
+        </div>
+      </div>
+
+      <div className="mt-4 grid grid-cols-2 gap-4">
         <div>
           <p className="text-xs" style={{ color: "var(--text-tertiary)" }}>Confidence</p>
-          <p className="font-data text-lg">{signal.confidence}%</p>
+          <p className="font-data text-sm">{signal.confidence}%</p>
         </div>
         <div>
           <p className="text-xs" style={{ color: "var(--text-tertiary)" }}>P/L</p>
           <p
-            className="font-data text-lg"
+            className="font-data text-sm"
             style={{ color: (signal.pnlPercent ?? 0) >= 0 ? "var(--long)" : "var(--short)" }}
           >
             {signal.pnlPercent != null ? formatPercent(signal.pnlPercent) : "—"}
           </p>
         </div>
-      </div>
-
-      <div className="mt-6">
-        <h2 className="mb-2 text-sm font-semibold" style={{ color: "var(--text-secondary)" }}>
-          Take profit targets
-        </h2>
-        {signal.restricted ? (
-          <p
-            className="rounded-md border px-4 py-3 text-sm"
-            style={{ background: "var(--surface)", borderColor: "var(--border)", color: "var(--text-tertiary)" }}
-          >
-            🔒 Hidden until upgrade.
-          </p>
-        ) : (
-          <div className="space-y-2">
-            {signal.takeProfits.map((tp) => (
-              <div
-                key={tp.level}
-                className="flex items-center justify-between rounded-md border px-4 py-2.5"
-                style={{ background: "var(--surface)", borderColor: "var(--border)" }}
-              >
-                <span className="text-sm">TP{tp.level}</span>
-                <span className="font-data">{formatPrice(tp.price, signal.market, signal.symbol)}</span>
-                <span
-                  className="text-xs"
-                  style={{ color: tp.hitAt ? "var(--long)" : "var(--text-tertiary)" }}
-                >
-                  {tp.hitAt ? "Hit" : "Pending"}
-                </span>
-              </div>
-            ))}
-          </div>
-        )}
       </div>
 
       {signal.note && (
